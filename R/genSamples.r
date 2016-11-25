@@ -286,3 +286,58 @@ setMethod(
     retObject
   }
 )
+
+setMethod(
+  f = "getMinimalTrain",
+  signature = "RLBigDataLinkage",
+  definition = function(rpairs, nEx=1)
+  {
+    
+    if (nEx < 1)
+      stop(sprintf("Illegal value for nEx: %d!", nEx))
+    
+    o <- ffdforder(rpairs@pairs[3:(length(rpairs@pairs)-1)])
+    
+    pairs <- rpairs@pairs[o,] # sort geht wahrscheinlich nicht, weil nicht nach allem sortiert wird (?)
+    nPairs <- nrow(rpairs@pairs)
+    
+    thisPattern <- pairs[1,3:(ncol(pairs)-1)]
+    patInd <- list(1)
+    
+    ffrowapply(
+      {
+        chunk <- pairs[i1:i2,3:(ncol(pairs)-1)] # wichtig, enorme Beschleunigung!
+        chunk[is.na(chunk)] <- 0
+        dupInd <- which(!duplicated(chunk))
+        if (isTRUE(all.equal(chunk[1,], thisPattern, check.attributes=FALSE))) dupInd <- dupInd[-1]
+        if (length(dupInd) > 0) patInd <- append(patInd, dupInd + i1 - 1)
+        thisPattern <- chunk[nrow(chunk),]
+      }, X = pairs)
+    # convert list of indices to vector, add nrow(pairs) + 1 as last element
+    # (position of a virtual additional pattern after the existent ones)
+    patInd <- c(unlist(patInd), nrow(pairs))
+    
+    # draw training examples
+    trainInd <- list()
+    for (i in 1:(length(patInd) - 1))
+    {
+      thisPatCount <- patInd[i+1] - patInd[i]
+      trainInd[[i]] <- sample(thisPatCount, min(thisPatCount, nEx)) + patInd[i] - 1
+    }
+    trainPairs <- pairs[unlist(trainInd),]
+    
+    retObject <- list(
+      data1 = rpairs@data1,
+      data2 = rpairs@data2,
+      pairs = as.data.frame(trainPairs),
+      frequencies = getFrequencies(rpairs), 
+      type = switch(
+        class(rpairs),
+        RLBigDataDedup = "deduplication", 
+        RLBigDataLinkage = "linkage"
+      )
+    )
+    class(retObject) <- "RecLinkData"
+    retObject
+  }
+)
